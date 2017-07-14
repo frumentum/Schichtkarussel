@@ -18,7 +18,7 @@ createDatabase <- function() {
   # Connect to the database
   db <- dbConnect(SQLite(), sqlitePath)
   # Construct the update query by looping over the data fields
-  createUsers <- "INSERT INTO %s (Datum, Bewohner, EinAus, Kategorie, billdate, Wert, Kommentar, Beglichen) VALUES ('%s')"
+  createUsers <- "INSERT INTO %s (Tag, Datum, Schicht, Von, Übernimmt) VALUES ('%s')"
   createResponses <- ""
   createCounters <- ""
   
@@ -31,18 +31,12 @@ createDatabase <- function() {
 
 generateRandomData <- function(number) {
   for (i in 1:number) {
-    Bewohner <-
-      c("Chris", "Sophie", "Jo", "Julia", "Miri")[sample(1:5, 1, replace = T)]
+    Tag <- c("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
     Datum <- format(Sys.time(), "%Y.%m.%d %H:%M:%S")
-    Wert <- sample(1:100, 1, replace = T)
-    Kategorie <-
-      c("Essen",
-        "Fahrtkosten",
-        "Kueche",
-        "Party",
-        "Spende",
-        "Materialien")[sample(1:6, 1, replace = T)]
-    entry <- c(Datum, Bewohner, "Ausgabe", Kategorie, Wert, TRUE)
+    Schicht <- c("früh", "mitte", "spät")
+    Von <- c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")[sample(1:5, 1, replace = T)]
+    Übernimmt <- c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")[sample(1:5, 1, replace = T)]
+    entry <- c(Tag, Datum, Schicht, Von, Übernimmt)
     saveData(entry)
   }
 }
@@ -57,7 +51,7 @@ saveData <- function(data, type="insert") {
   # condition 2 delete row from database
   if(type=="insert"){
     query <- sprintf(
-      "INSERT INTO %s (Datum, Bewohner, EinAus, Kategorie, billdate, Wert, Kommentar, Beglichen) VALUES ('%s')",
+      "INSERT INTO %s (Tag, Datum, Schicht, Von, Übernimmt) VALUES ('%s')",
       sqlitetable,
       #paste(names(data), collapse = "', '")
       paste(data, collapse = "', '")
