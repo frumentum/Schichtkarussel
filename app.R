@@ -11,14 +11,14 @@ print(getwd())
 # Path to sqlite database
 sqlitePath <- "test.db"
 # Name of the sqlite table
-sqlitetable <- "in_out"
+sqlitetable <- "switch_tour"
 
 # Function for creating a new database if none already exists
 createDatabase <- function() {
   # Connect to the database
   db <- dbConnect(SQLite(), sqlitePath)
   # Construct the update query by looping over the data fields
-  createUsers <- "INSERT INTO %s (Tag, Datum, Schicht, Von, Übernimmt) VALUES ('%s')"
+  createUsers <- "INSERT INTO %s (Datum, Schicht, Von, Uebernimmt) VALUES ('%s')"
   createResponses <- ""
   createCounters <- ""
   
@@ -31,12 +31,12 @@ createDatabase <- function() {
 
 generateRandomData <- function(number) {
   for (i in 1:number) {
-    Tag <- c("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+    #Tag <- c("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
     Datum <- format(Sys.time(), "%Y.%m.%d %H:%M:%S")
     Schicht <- c("früh", "mitte", "spät")
     Von <- c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")[sample(1:5, 1, replace = T)]
-    Übernimmt <- c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")[sample(1:5, 1, replace = T)]
-    entry <- c(Tag, Datum, Schicht, Von, Übernimmt)
+    Uebernimmt <- c("Harald", "Isolde", "Gerlinde", "")[sample(1:4, 1, replace = T)]
+    entry <- c(Datum, Schicht, Von, Übernimmt)
     saveData(entry)
   }
 }
@@ -51,7 +51,7 @@ saveData <- function(data, type="insert") {
   # condition 2 delete row from database
   if(type=="insert"){
     query <- sprintf(
-      "INSERT INTO %s (Tag, Datum, Schicht, Von, Übernimmt) VALUES ('%s')",
+      "INSERT INTO %s (Datum, Schicht, Von, Uebernimmt) VALUES ('%s')",
       sqlitetable,
       #paste(names(data), collapse = "', '")
       paste(data, collapse = "', '")
@@ -64,7 +64,7 @@ saveData <- function(data, type="insert") {
     )
   } else if(type=="update") {
     query <- sprintf(
-      "UPDATE in_out SET Beglichen = 'TRUE' WHERE lfdNr = %i", data
+      "UPDATE in_out SET Uebernimmt != '' WHERE lfdNr = %i", data
     )
     # Just for debugging, prints the data, in that case the row that is selected
     print(data)
@@ -97,13 +97,9 @@ responses <- loadData()
 GetTableMetadata <- function() {
   fields <- c(id = "Id",
               date = "Datum",
-              name = "Name",
-              in_out = "Einnahme / Ausgabe",
-              category = "Kategorie",
-              billdate = "Miet- / Rechnungsdatum",
-              value = "Wert",
-              comment = "Kommentar",
-              done = "Beglichen")
+              tour = "Schicht",
+              of = "Von",
+              takes = "Uebernimmt")
   
   result <- list(fields = fields)
   return (result)
@@ -141,13 +137,9 @@ DeleteData <- function(data) {
 # Cast from Inputs to a one-row data.frame
 CastData <- function(data) {
   datar <- data.frame(date = data["date"],
-                      name = data["name"],
-                      in_out = data["in_out"],
-                      category = data["category"],
-                      billdate = data["billdate"],
-                      value = as.integer(data["value"]),
-                      comment = data["comment"],
-                      done = as.logical(data["done"]),
+                      tour = data["tour"],
+                      of = data["of"],
+                      takes = data["takes"],
                       stringsAsFactors = FALSE)
   
   rownames(datar) <- data["id"]
@@ -158,10 +150,10 @@ CastData <- function(data) {
 # these are seperate fields for editing below the data table
 UpdateInputs <- function(data, session) {
   updateTextInput(session, inputId = "id_tab", value = unname(data["lfdNr"]))
-  updateTextInput(session, inputId = "name_tab", value = unname(data["Bewohner"]))
-  updateTextInput(session, inputId = "category_tab", value = unname(data["Kategorie"]))
-  updateTextInput(session, inputId = "value_tab", value = unname(data["Wert"]))
-  updateCheckboxInput(session, inputId = "done_tab", value = as.logical(data["Beglichen"]))
+  updateTextInput(session, inputId = "date_tab", value = unname(data["Datum"]))
+  updateTextInput(session, inputId = "tour_tab", value = unname(data["Schicht"]))
+  updateTextInput(session, inputId = "of_tab", value = unname(data["Von"]))
+  updateSelectInput(session, inputId = "takes_tab", value = data["Uebernimmt"])
 }
 
 EmptyInputs <- function(session) {
@@ -180,12 +172,11 @@ EmptyInputs <- function(session) {
 ui = shinyUI(dashboardPage(
   skin = "green",
   
-  dashboardHeader(title = "Spinnerei Kollnau"),
+  dashboardHeader(title = "Die Schichttausch Datenbank"),
   
   dashboardSidebar(sidebarMenu(
-    menuItem("Eingabe", tabName = "eingabe", icon = icon("edit")),
     menuItem("Tabelle", tabName = "tabelle", icon = icon("table")),
-    menuItem("Ausgabe", tabName = "ausgabe", icon = icon("line-chart"))
+    menuItem("Eingabe", tabName = "eingabe", icon = icon("edit"))
   )),
   
   dashboardBody(
@@ -195,61 +186,22 @@ ui = shinyUI(dashboardPage(
       tabItem(
         tabName = "eingabe",
         fluidRow(
-          selectizeInput("name", label = "Name", choices = c(
-                                                          "Bitte waehlen",
-                                                          "Christian Heymer",
-                                                          "Janosch Hüttner",
-                                                          "Chris Madeira Noronha",
-                                                          "Johannes Reiter",
-                                                          "Sophie Mailänder",
-                                                          "Miriam Zeltner",
-                                                          "Jakob Hehl",
-                                                          "Amir",
-                                                          "Szofi",
-                                                          "Felix Lindicke"
+          dateInput("date", "Datum", format = "yyyy-mm-dd", weekstart = 1, language = "de"),
+          selectizeInput("tour", "Schicht", choices = c("Bitte wählen",
+                                                        "früh",
+                                                        "mitte",
+                                                        "spät")),
+          selectizeInput("of", label = "Von", choices = c("Bitte wählen",
+                                                          "Harald", 
+                                                          "Isolde", 
+                                                          "Gerlinde", 
+                                                          "Arnold", 
+                                                          "Dietrich"
                                                           )
           ),
-          
           conditionalPanel(
-            condition = "input.name != 'Bitte waehlen'",
-            selectInput(
-              "in_out",
-              label = "Aus- oder Einnahme",
-              choices = c("Bitte waehlen", "Einnahme", "Ausgabe")
-            )
-          ),
-          
-          # choose category of transaction
-          conditionalPanel(
-            condition = "input.name != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.in_out != 'Bitte waehlen'",
-            selectInput(
-              "category",
-              label = "Kategorie",
-              choices = c("Bitte waehlen",
-                          "Party",
-                          "Spende",
-                          "Miete")
-            )
-          ),
-          
-          conditionalPanel(
-            condition = "input.name != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.category != 'Bitte waehlen'",
-            dateInput("billdate", "Datum der Miete / Rechnung", value = "", format = "yyyy-mm-dd", language = "de")
-          ),
-          
-          conditionalPanel(
-            condition = "input.name != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.category != 'Bitte waehlen' && input.billdate != ''",
-            numericInput("value", "Geldbetrag", value = 0)
-          ),
-          
-          conditionalPanel(
-            condition = "input.name != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.in_out != 'Bitte waehlen' && input.category != 'Bitte waehlen' && input.billdate != 0 && input.value != 0",
-            textInput("comment", "Kommentar", NULL),
-            # Implement later... for making "Beglichen" immediately
-            #checkboxInput("done", "Beglichen", FALSE),
-            helpText("Nach der Eingabe einfach auf",
-                     "den Abschicken-Knopf druecken."),
-            actionButton("submit", "Abschicken", icon = icon("send"))
+            condition = "input.date != Sys.Date() && input.tour != 'Bitte wählen' && input.of != 'Bitte wählen'",
+            actionButton("submit", "Abzugebende Schicht in Datenbank eintragen")
           ),
 
         # dialog forcing user to check the input values (triggered by clicking on submit)
@@ -272,27 +224,19 @@ ui = shinyUI(dashboardPage(
       ############# TABLE TAB #############################
       tabItem(
         tabName = "tabelle",
-        
-        # Create a new Row in the UI for selectInputs
-        # fluidRow(
-        #   column(3,
-        #          dateRangeInput("daterange", "Datum")),
-        #   column(2,
-        #          selectInput("user", "Benutzer", c(
-        #            "Alles", unique(as.character(responses$Bewohner))
-        #          )))
-        #   ),
-        
         # Create a new row for the table.
         fluidRow(DT::dataTableOutput("responses")),
 
-        box(title = "Begleichen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
+        box(title = "Schicht übernehmen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
           fluidRow(#actionButton("delete", "Zeile löschen"), # Implement the delete feature later maybe in an extra box
                   shinyjs::disabled(textInput(inputId = "id_tab", "lfdNr", "")),
-                  shinyjs::disabled(textInput(inputId = "name_tab", "Name", "")),
-                  shinyjs::disabled(textInput(inputId = "category_tab", "Kategory", "")),
-                  shinyjs::disabled(textInput(inputId = "value_tab", "Wert", "")),
-                  checkboxInput(inputId = "done_tab", "Beglichen", FALSE),
+                  shinyjs::disabled(textInput(inputId = "date_tab", "Datum", "")),
+                  shinyjs::disabled(textInput(inputId = "tour_tab", "Schicht", "")),
+                  shinyjs::disabled(textInput(inputId = "of_tab", "Von", "")),
+                  selectizeInput(inputId = "change_tab", "Übernimmt", choices = c("",
+                                                                                  "Harald", 
+                                                                                  "Isolde", 
+                                                                                  "Gerlinde")),
                   actionButton("update", "Änderung übernehmen", icon = icon("send")) # Was for submitting the change in checkbox input... maybe possible submitting while clicking the checkbox
                    )
           )
@@ -308,30 +252,6 @@ ui = shinyUI(dashboardPage(
 
 server <- function(input, output, session) {
   
-  # Update selectInput "category" after choosing selectInput "in_out"
-  # Implement later the "Optionen" for in and outs that are not often used like Wasser, Strom ...
-  # observeEvent(input$in_out, {
-  #   if (input$in_out == "Ausgabe" && input$check == TRUE) {updateSelectInput(session, "category", choices = c("Bitte waehlen", "Essen", "Fahrtkosten", "Party", "Strom", "Holz", "Gas", "Wasser", "Telefon"))}
-  #   else if (input$in_out == "Ausgabe" && input$check == FALSE) {
-  #     updateSelectInput(session, "category", choices = c("Bitte waehlen", "Essen", "Fahrtkosten", "Party"))
-  #   } else {updateSelectInput(session, "category", choices = c("Bitte waehlen", "Party", "Spende", "Miete"))}
-  # })
-  
-  # Update selectInput "category" after choosing selectInput "in_out"
-  observeEvent(input$in_out, {
-    if (input$in_out == "Ausgabe"){
-      updateSelectInput(session, "category", choices = list(c("Bitte waehlen"), "Allgemein" = c("Essen", "Verbrauchsmaterialien", "Fahrtkosten"), "Verwaltung" = c("Miete", "Rueckbaukonto", "Kontoführungsgebühr", "Party", "Baumaterialien", "Überweisung Foodcoop", "Brennholz", "GEZ", "Strom", "Wasser", "Internet & Telefon", "Gas")))
-      #updateSelectInput(session, "category", choices = c("Bitte waehlen", "Essen", "Verbrauchsmaterialien", "Fahrtkosten", "Party", "Baumaterialien", "Überweisung Foodcoop", "Brennholz", "GEZ", "Strom", "Wasser", "Internet & Telefon", "Gas"))
-    } else {updateSelectInput(session, "category", choices = c("Bitte waehlen", "Party", "Spende", "Miete"))}
-  })
-  
-  # Update selectInput "category" after choosing selectInput "in_out"
-  observeEvent(input$category, {
-    if (input$category == "Miete") {updateDateInput(session, "billdate", label = "Miete für Monat?")} else {
-      updateDateInput(session, "billdate", label = "Rechnungsdatum")
-    }
-  })
-  
   # input fields are treated as a group
   # formData <- reactive({
   #   sapply(names(GetTableMetadata()$fields), function(x) input[[x]])
@@ -342,38 +262,19 @@ server <- function(input, output, session) {
     toggleModal(session, "confirm", toggle = "close")
     # Save values to database...
     newdata <-
-      c(
-        format(Sys.time(), "%Y.%m.%d %H:%M:%S"),
-        input$name,
-        input$in_out,
-        input$category,
-        format(input$billdate, "%Y.%m.%d"),
-        as.numeric(input$value),
-        input$comment,
-        # Populate the done input with default FALSE
-        #input$done
-        FALSE
+      c(format(input$date, "%Y.%m.%d"),
+        input$tour,
+        input$of,
+        ""
       )
     # print input values for debugging...
     #print(newdata)
     saveData(newdata)
     
     # Deactivated emptying the input fields for debugging...
-    EmptyInputs(session)
+    #EmptyInputs(session)
   })
   
-
-  
-  #Press "delete row" button
-  # observeEvent(input$delete, {
-  #   # Get the right ID selected row because selected row must not equal the ID in database
-  #   data <- ReadData()[input$responses_rows_selected, ]
-  #   print(data["ldfNr"])
-  #   saveData(data["lfdNr"], type = "delete")
-  #   # Updates the editing fields below datatable
-  #   #UpdateInputs(CreateDefaultRecord(), session)
-  # }, priority = 1)
-
   #Select row in table -> show details in "Beglichen"-Inputs
   observeEvent(input$responses_rows_selected, {
     if (length(input$responses_rows_selected) > 0) {
