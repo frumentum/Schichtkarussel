@@ -4,6 +4,8 @@ library(shinyjs)
 library(shinyBS)
 library(RSQLite)
 library(DT)
+library(ggplot2)
+library(scales)
 
 # Print current working directory
 print(getwd())
@@ -36,7 +38,7 @@ generateRandomData <- function(number) {
     Schicht <- c("früh", "mitte", "spät")
     Von <- c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")[sample(1:5, 1, replace = T)]
     Uebernimmt <- c("Harald", "Isolde", "Gerlinde", "")[sample(1:4, 1, replace = T)]
-    entry <- c(Datum, Schicht, Von, Übernimmt)
+    entry <- c(Datum, Schicht, Von, Uebernimmt)
     saveData(entry)
   }
 }
@@ -49,25 +51,21 @@ saveData <- function(data, type="insert") {
   # Construct the update query by looping over the data fields
   # condition "insert" saving into database
   # condition 2 delete row from database
+  # condition 3 update Beglichen
   if(type=="insert"){
     query <- sprintf(
       "INSERT INTO %s (Datum, Schicht, Von, Uebernimmt) VALUES ('%s')",
       sqlitetable,
-      #paste(names(data), collapse = "', '")
       paste(data, collapse = "', '")
-      #     paste(names(data), collapse = ", "),
-      #     paste(data, collapse = "', '")
     )
   } else if(type=="delete") { # condition for deleting a row from database, 
     query <- sprintf(
-      "DELETE FROM in_out WHERE lfdNr = %i", data
+      "DELETE FROM switch_tour WHERE lfdNr = %i", data
     )
-  } else if(type=="update") {
+  } else if(type=="update") { # condition for turning Uebernimmt variable to TRUE
     query <- sprintf(
-      "UPDATE in_out SET Uebernimmt != '' WHERE lfdNr = %i", data
+      "UPDATE switch_tour SET Uebernimmt != '' WHERE lfdNr = %i", data
     )
-    # Just for debugging, prints the data, in that case the row that is selected
-    print(data)
   }
   
   # Submit the update query and disconnect
@@ -89,32 +87,7 @@ loadData <- function() {
 
 # Load database at start for populating the selectInputs of user interface
 responses <- loadData()
-
-
-# Get table metadata. For now, just the fields
-# Further development: also define field types
-# and create inputs generically
-GetTableMetadata <- function() {
-  fields <- c(id = "Id",
-              date = "Datum",
-              tour = "Schicht",
-              of = "Von",
-              takes = "Uebernimmt")
-  
-  result <- list(fields = fields)
-  return (result)
-}
-
-#CREATE
-CreateData <- function(data) {
-  data <- CastData(data)
-  rownames(data) <- GetNextId()
-  if (exists("responses")) {
-    responses <<- rbind(responses, data)
-  } else {
-    responses <<- data
-  }
-}
+print(responses)
 
 #READ
 ReadData <- function() {
@@ -123,31 +96,9 @@ ReadData <- function() {
   }
 }
 
-#UPDATE
-UpdateData <- function(data) {
-  data <- CastData(data)
-  responses[row.names(responses) == row.names(data), ] <<- data
-}
-
-#DELETE
-DeleteData <- function(data) {
-  responses <<- responses[row.names(responses) != unname(data["id"]), ]
-}
-
-# Cast from Inputs to a one-row data.frame
-CastData <- function(data) {
-  datar <- data.frame(date = data["date"],
-                      tour = data["tour"],
-                      of = data["of"],
-                      takes = data["takes"],
-                      stringsAsFactors = FALSE)
-  
-  rownames(datar) <- data["id"]
-  return (datar)
-}
-
 # Fill input fields with the values of the selected record in the table
-# these are seperate fields for editing below the data table
+# option "Uebernimmt" under datatable view
+# these are seperate fields for editing the data
 UpdateInputs <- function(data, session) {
   updateTextInput(session, inputId = "id_tab", value = unname(data["lfdNr"]))
   updateTextInput(session, inputId = "date_tab", value = unname(data["Datum"]))
@@ -157,12 +108,9 @@ UpdateInputs <- function(data, session) {
 }
 
 EmptyInputs <- function(session) {
-  updateSelectInput(session, inputId = "name", selected = "Bitte waehlen")
-  updateSelectInput(session, inputId = "in_out", selected = "Bitte waehlen")
-  updateSelectInput(session, inputId = "category", selected = "Bitte waehlen")
-  updateDateInput(session, inputId = "billdate", value = NULL)
-  updateNumericInput(session, inputId = "value", value = 0)
-  updateTextInput(session, inputId = "comment", value = "")
+  updateSelectizeInput(session, inputId = "of", selected = "Bitte wählen")
+  updateDateInput(session, inputId = "date", value = Sys.Date())
+  updateSelectizeInput(session, inputId = "tour", selected = "Bitte wählen")
 }
 
 ##########################################################################################################
@@ -186,22 +134,37 @@ ui = shinyUI(dashboardPage(
       tabItem(
         tabName = "eingabe",
         fluidRow(
-          dateInput("date", "Datum", format = "yyyy-mm-dd", weekstart = 1, language = "de"),
-          selectizeInput("tour", "Schicht", choices = c("Bitte wählen",
-                                                        "früh",
-                                                        "mitte",
-                                                        "spät")),
-          selectizeInput("of", label = "Von", choices = c("Bitte wählen",
-                                                          "Harald", 
-                                                          "Isolde", 
-                                                          "Gerlinde", 
-                                                          "Arnold", 
-                                                          "Dietrich"
-                                                          )
+          selectizeInput("of", label = "Wer will was loswerden?", 
+                         choices = c("Bitte wählen",
+                                     "Harald", 
+                                     "Isolde", 
+                                     "Gerlinde", 
+                                     "Arnold", 
+                                     "Dietrich")
           ),
+          
+          conditionalPanel(
+            condition = "input.of != 'Bitte wählen'",
+            dateInput("date", "Datum", 
+                      format = "yyyy-mm-dd", 
+                      weekstart = 1, 
+                      language = "de", 
+                      value = Sys.Date())
+          ),
+          
+          conditionalPanel(
+            condition = "input.of != 'Bitte wählen' && input.date != Sys.Date()",
+            selectizeInput("tour", "Schicht", choices = c("Bitte wählen",
+                                                          "früh",
+                                                          "mitte",
+                                                          "spät"))
+          ),
+          
           conditionalPanel(
             condition = "input.date != Sys.Date() && input.tour != 'Bitte wählen' && input.of != 'Bitte wählen'",
-            actionButton("submit", "Abzugebende Schicht in Datenbank eintragen")
+            helpText("Nach der Eingabe einfach auf",
+                     "den Abschicken-Knopf drücken."),
+            actionButton("submit", "Abzugebende Schicht in Datenbank eintragen", icon = icon("send"))
           ),
 
         # dialog forcing user to check the input values (triggered by clicking on submit)
@@ -209,7 +172,6 @@ ui = shinyUI(dashboardPage(
           id = "confirm",
           title = "In Datenbank übernehmen?",
           trigger = "submit",
-          #size = "small",
           HTML("Bitte überprüfe nochmal deine Eingabe!<br>Möchtest du den neuen Eintrag zur Datenbank hinzufügen?
                <br>Danke.<br>
                "),
@@ -227,22 +189,29 @@ ui = shinyUI(dashboardPage(
         # Create a new row for the table.
         fluidRow(DT::dataTableOutput("responses")),
 
-        box(title = "Schicht übernehmen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
-          fluidRow(#actionButton("delete", "Zeile löschen"), # Implement the delete feature later maybe in an extra box
-                  shinyjs::disabled(textInput(inputId = "id_tab", "lfdNr", "")),
-                  shinyjs::disabled(textInput(inputId = "date_tab", "Datum", "")),
-                  shinyjs::disabled(textInput(inputId = "tour_tab", "Schicht", "")),
-                  shinyjs::disabled(textInput(inputId = "of_tab", "Von", "")),
-                  selectizeInput(inputId = "change_tab", "Übernimmt", choices = c("",
-                                                                                  "Harald", 
-                                                                                  "Isolde", 
-                                                                                  "Gerlinde")),
-                  actionButton("update", "Änderung übernehmen", icon = icon("send")) # Was for submitting the change in checkbox input... maybe possible submitting while clicking the checkbox
+        box(title = "Änderungen in der Tabelle vornehmen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
+          fluidRow(
+            column(2,
+                   shinyjs::disabled(textInput(inputId = "id_tab", "lfdNr", ""))
+                   ),
+            column(4,
+                   shinyjs::disabled(textInput(inputId = "of_tab", "Von", ""))
+                   ),
+            column(3,
+                   shinyjs::disabled(textInput(inputId = "date_tab", "Datum", ""))
+                   ),
+            column(3,
+                   shinyjs::disabled(textInput(inputId = "tour_tab", "Schicht", ""))
+                   ),
+            selectizeInput(inputId = "change_tab", "Übernimmt", choices = c("",
+                                                                            "Harald", 
+                                                                            "Isolde", 
+                                                                            "Gerlinde")),
+            actionButton("update", "Änderung übernehmen", icon = icon("send")), 
+            actionButton("delete", "Zeile löschen (!!!)", icon = icon("trash"))
                    )
           )
-        ),
-      tabItem(tabName = "ausgabe",
-              h2("Ausgabe"))
+        )
     ))
   ))
 
