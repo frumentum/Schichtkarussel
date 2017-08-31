@@ -113,6 +113,12 @@ EmptyInputs <- function(session) {
   updateSelectizeInput(session, inputId = "tour", selected = "Bitte wählen")
 }
 
+names <- c("Harald", 
+           "Isolde", 
+           "Gerlinde", 
+           "Arnold", 
+           "Dietrich")
+
 ##########################################################################################################
 ############################ USER INTERFACE ##############################################################
 ##########################################################################################################
@@ -135,12 +141,8 @@ ui = shinyUI(dashboardPage(
         tabName = "eingabe",
         fluidRow(
           selectizeInput("of", label = "Wer will was loswerden?", 
-                         choices = c("Bitte wählen",
-                                     "Harald", 
-                                     "Isolde", 
-                                     "Gerlinde", 
-                                     "Arnold", 
-                                     "Dietrich")
+                         choices = c("Bitte wählen" = "",
+                                     names)
           ),
           
           conditionalPanel(
@@ -204,11 +206,7 @@ ui = shinyUI(dashboardPage(
                    shinyjs::disabled(textInput(inputId = "tour_tab", "Schicht", ""))
                    ),
             selectizeInput(inputId = "takes_tab", "Übernimmt", choices = c("",
-                                                                           "Harald", 
-                                                                           "Isolde", 
-                                                                           "Gerlinde", 
-                                                                           "Arnold", 
-                                                                           "Dietrich")),
+                                                                           names)),
             actionButton("update", "Änderung übernehmen", icon = icon("send")), 
             actionButton("delete", "Zeile löschen (!!!)", icon = icon("trash"))
                    )
@@ -226,9 +224,14 @@ server <- function(input, output, session) {
   # Click submit button and confirm with Yes
   observeEvent(input$BUTyes, {
     toggleModal(session, "confirm", toggle = "close")
+    
+    # stupid workaround because of date format...
+    date <- as.character(input$date) %>%
+      paste0(" 01:00:00") 
+    
     # Save values to database...
     newdata <-
-      c(format(input$date, "%Y.%m.%d"),
+      c(date,
         input$tour,
         input$of,
         ""
@@ -274,8 +277,9 @@ server <- function(input, output, session) {
     input$submit
     input$update
     input$delete
-    datatable(loadData(), options = list(pageLength = 50, order = list(1, 'desc')), rownames = FALSE, selection = "single") #%>%
-      #formatStyle("Uebernimmt", backgroundColor = styleEqual(c("", c("Harald", "Isolde", "Gerlinde", "Arnold", "Dietrich")), c('red', 'green')))
+    datatable(loadData()[,-1], options = list(pageLength = 50, order = list(1, 'desc')), rownames = FALSE, selection = "single") %>%
+      formatStyle("Uebernimmt", backgroundColor = styleEqual(c("", names), c('red', rep('green', length(names))))) %>%
+      formatDate("Datum")
   }
   )     
   
