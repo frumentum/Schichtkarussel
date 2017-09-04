@@ -20,7 +20,7 @@ createDatabase <- function() {
   # Connect to the database
   db <- dbConnect(SQLite(), sqlitePath)
   # Construct the update query by looping over the data fields
-  createUsers <- "INSERT INTO %s (Datum, Schicht, Von, Uebernimmt) VALUES ('%s')"
+  createUsers <- "INSERT INTO %s (Datum, Schicht, Von, Priorität, Übernimmt, Kommentar) VALUES ('%s')"
   createResponses <- ""
   createCounters <- ""
   
@@ -54,7 +54,7 @@ saveData <- function(data, type="insert", input) {
   # condition 3 update Beglichen
   if(type=="insert"){
     query <- sprintf(
-      "INSERT INTO %s (Datum, Schicht, Von, Uebernimmt) VALUES ('%s')",
+      "INSERT INTO %s (Datum, Schicht, Von, Priorität, Übernimmt, Kommentar) VALUES ('%s')",
       sqlitetable,
       paste(data, collapse = "', '")
     )
@@ -64,7 +64,7 @@ saveData <- function(data, type="insert", input) {
     )
   } else if(type=="update") { # condition for turning 'Uebernimmt' variable to person's name
     query <- sprintf(
-      paste("UPDATE switch_tour SET Uebernimmt = ", input, " WHERE lfdNr = %i", sep = "'"), data
+      paste("UPDATE switch_tour SET Übernimmt = ", input, " WHERE lfdNr = %i", sep = "'"), data
     )
   }
   
@@ -87,7 +87,7 @@ loadData <- function() {
 
 # Load database at start for populating the selectInputs of user interface
 responses <- loadData()
-print(responses)
+# print(responses)
 
 #READ
 ReadData <- function() {
@@ -100,17 +100,18 @@ ReadData <- function() {
 # option "Uebernimmt" under datatable view
 # these are seperate fields for editing the data
 UpdateInputs <- function(data, session) {
-  updateTextInput(session, inputId = "id_tab", value = unname(data["lfdNr"]))
   updateTextInput(session, inputId = "date_tab", value = unname(data["Datum"]))
   updateTextInput(session, inputId = "tour_tab", value = unname(data["Schicht"]))
   updateTextInput(session, inputId = "of_tab", value = unname(data["Von"]))
-  updateTextInput(session, inputId = "takes_tab", value = unname(data["Uebernimmt"]))
+  updateTextInput(session, inputId = "prio_tab", value = unname(data["Priorität"]))
+  updateTextInput(session, inputId = "takes_tab", value = unname(data["Übernimmt"]))
 }
 
 EmptyInputs <- function(session) {
-  updateSelectizeInput(session, inputId = "of", selected = "Bitte wählen")
-  updateDateInput(session, inputId = "date", value = NA)
-  updateSelectizeInput(session, inputId = "tour", selected = "Bitte wählen")
+  updateSelectizeInput(session, inputId = "of", selected = "")
+  updateDateInput(session, inputId = "date", value = Sys.Date())
+  updateSelectizeInput(session, inputId = "tour", selected = "")
+  updateNumericInput(session, inputId = "priority", value = 2)
 }
 
 names <- c("Harald", 
@@ -140,33 +141,39 @@ ui = shinyUI(dashboardPage(
       tabItem(
         tabName = "eingabe",
         fluidRow(
-          selectizeInput("of", label = "Wer will was loswerden?", 
-                         choices = c("Bitte wählen" = "",
-                                     names)
+          column(3,
+                 selectizeInput("of", label = "Wer will was loswerden?", 
+                                choices = c("Bitte wählen" = "",
+                                            names)
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.of != ''",
+                   dateInput("date", "Datum", 
+                             format = "yyyy-mm-dd", 
+                             weekstart = 1, 
+                             language = "de", 
+                             value = Sys.Date())
+                 )
           ),
-          
-          conditionalPanel(
-            condition = "input.of != 'Bitte wählen'",
-            dateInput("date", "Datum", 
-                      format = "yyyy-mm-dd", 
-                      weekstart = 1, 
-                      language = "de", 
-                      value = 0)
-          ),
-          
-          conditionalPanel(
-            condition = "input.of != 'Bitte wählen' && input.date != 0",
-            selectizeInput("tour", "Schicht", choices = c("Bitte wählen",
-                                                          "früh",
-                                                          "mitte",
-                                                          "spät"))
-          ),
-          
-          conditionalPanel(
-            condition = "input.date != 0 && input.tour != 'Bitte wählen' && input.of != 'Bitte wählen'",
-            helpText("Nach der Eingabe einfach auf",
-                     "den Abschicken-Knopf drücken."),
-            actionButton("submit", "Abzugebende Schicht in Datenbank eintragen", icon = icon("send"))
+          column(9,
+                 conditionalPanel(
+                   condition = "input.of != ''",
+                   selectizeInput("tour", "Schicht", choices = c("Bitte wählen" = "",
+                                                                 "früh",
+                                                                 "mitte",
+                                                                 "spät"))
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.of != '' && input.tour != ''",
+                   numericInput("priority", "Priorität", min = 1, max = 3, value = 2),
+                   helpText("1 = super wichtig, 2 = mittel, 3 = wär schön, wenns klappt"),
+                   textInput("comment", "Kommentar"),
+                   helpText("Nach der Eingabe einfach auf",
+                            "den Abschicken-Knopf drücken."),
+                   actionButton("submit", "Abzugebende Schicht in Datenbank eintragen", icon = icon("send"))
+                 )
           ),
 
         # dialog forcing user to check the input values (triggered by clicking on submit)
@@ -188,14 +195,13 @@ ui = shinyUI(dashboardPage(
       ############# TABLE TAB #############################
       tabItem(
         tabName = "tabelle",
+        fluidRow(h2("Zeile in der Tabelle anklicken und über blauen Button unterhalb bearbeiten")),
+        br(),
         # Create a new row for the table.
         fluidRow(DT::dataTableOutput("responses")),
 
-        box(title = "Änderungen in der Tabelle vornehmen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
+        box(title = "Schicht übernehmen oder Zeile rauslöschen", status = "primary", solidHeader = T, collapsible = T, collapsed = T,
           fluidRow(
-            column(2,
-                   shinyjs::disabled(textInput(inputId = "id_tab", "lfdNr", ""))
-                   ),
             column(4,
                    shinyjs::disabled(textInput(inputId = "of_tab", "Von", ""))
                    ),
@@ -205,7 +211,10 @@ ui = shinyUI(dashboardPage(
             column(3,
                    shinyjs::disabled(textInput(inputId = "tour_tab", "Schicht", ""))
                    ),
-            selectizeInput(inputId = "takes_tab", "Übernimmt", choices = c("",
+            column(2,
+                   shinyjs::disabled(textInput(inputId = "prio_tab", "Priorität", ""))
+            ),
+            selectizeInput(inputId = "takes_tab", "Übernimmt", choices = c("Bitte wählen" = "",
                                                                            names)),
             actionButton("update", "Änderung übernehmen", icon = icon("send")), 
             actionButton("delete", "Zeile löschen (!!!)", icon = icon("trash"))
@@ -220,21 +229,36 @@ ui = shinyUI(dashboardPage(
 ##########################################################################################################
 
 server <- function(input, output, session) {
+  # update input$tour if weekday is not a wednesday
+  observeEvent(input$date, {
+    if (wday(input$date, label = T) != "Wed") {
+      updateSelectizeInput(session, "tour", label = "Schicht", choices = c("Bitte wählen" = "",
+                                                                           "früh",
+                                                                           "spät"))
+    } else {
+      updateSelectizeInput(session, "tour", label = "Schicht", choices = c("Bitte wählen" = "",
+                                                                           "früh",
+                                                                           "mitte",
+                                                                           "spät"))
+    }
+  })
   
   # Click submit button and confirm with Yes
   observeEvent(input$BUTyes, {
     toggleModal(session, "confirm", toggle = "close")
     
-    # stupid workaround because of date format...
+    
+    # stupid workaround: date has to be in a character string containing dates for visualize date in DT
     date <- as.character(input$date) %>%
       paste0(" 01:00:00") 
-    
     # Save values to database...
     newdata <-
       c(date,
         input$tour,
         input$of,
-        ""
+        input$priority,
+        "",
+        input$comment
       )
     saveData(newdata)
     
@@ -278,7 +302,7 @@ server <- function(input, output, session) {
     input$update
     input$delete
     datatable(loadData()[,-1], options = list(pageLength = 50, order = list(1, 'desc')), rownames = FALSE, selection = "single") %>%
-      formatStyle("Uebernimmt", backgroundColor = styleEqual(c("", names), c('red', rep('green', length(names))))) %>%
+      formatStyle("Übernimmt", backgroundColor = styleEqual(c("", names), c('red', rep('green', length(names))))) %>%
       formatDate("Datum")
   }
   )     
