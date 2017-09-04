@@ -301,8 +301,10 @@ server <- function(input, output, session) {
     input$submit
     input$update
     input$delete
-    datatable(loadData()[,-1], options = list(pageLength = 50, order = list(1, 'desc')), rownames = FALSE, selection = "single") %>%
+    # list(0, "asc"): date, list(4, "asc"): takes, list(3, "asc"): priority
+    datatable(loadData()[,-1], options = list(pageLength = 50, order = list(list(0, 'asc'), list(4, "asc"), list(3, "asc"))), rownames = FALSE, selection = "single") %>%
       formatStyle("Übernimmt", backgroundColor = styleEqual(c("", names), c('red', rep('green', length(names))))) %>%
+      formatStyle("Priorität", backgroundColor = styleEqual(c(1,2,3), c("red", "orange", "yellow"))) %>%
       formatDate("Datum")
   }
   )     
